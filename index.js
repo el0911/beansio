@@ -16,12 +16,14 @@ const convertToStandard = (link) => {
       chain[i] = `$${count}`;
       count = count + 1;
     }
-    
+
 
   }
 
   return chain.join('/')
 }
+
+let seed = false
 
 
 
@@ -51,7 +53,7 @@ class Beans {
   }
 
 
- createTree = ( link ) =>{
+  createTree = (link) => {
     const branch = {}
     const chain = link.split('/')
     let location = this.tree
@@ -59,13 +61,13 @@ class Beans {
       //first check if branch exist
       if (!location[chain[i]]) {
         location[chain[i]] = {
-          ____NAME____:chain[i],
-          ____TYPE____: chain[i].startsWith('$')  ? 'param' : 'notParam'
+          ____NAME____: chain[i],
+          ____TYPE____: chain[i].startsWith('$') ? 'param' : 'notParam'
         }
       }
-      location =  location[chain[i]] 
+      location = location[chain[i]]
     }
-     return  link
+    return link
   }
 
   remixBeans(link = "./app/routes") {
@@ -82,7 +84,7 @@ class Beans {
         else {
           let linkFormated = `${link}/${filename.split('-'[0])}`.replace('./app/routes', '')
           linkFormated = linkFormated.replace('.tsx', '').replace('.jsx', '').replace('.ts', '').replace('.js', '')
-          const allFormated =  linkFormated.replace(/[$]/g, ':').replace(/[.]/g, '/')
+          const allFormated = linkFormated.replace(/[$]/g, ':').replace(/[.]/g, '/')
 
           this.registeredRoute[this.createTree(convertToStandard(allFormated))] = {
             route: linkFormated.endsWith('/index') ? allFormated.replace('/index', '') : allFormated
@@ -126,66 +128,103 @@ class Beans {
     });
   };
 
-  logError(message = "", extraData) {
+  logError(message, extraData) {
     const APIKey = this.APIKey
 
     this.logQueue.add({
-      eventType: "ERROR", message, APIKey, payload: extraData
+      message, eventType: "ERROR", APIKey, payload: extraData
     });
 
   };
 
-  hardLinkCheck (link) {
+  hardLinkCheck(link) {
     const chain = link.split('/')
     let treePos = this.tree
     let countSeenParams = 1
     let linkConstruct = ''
-     for (let i = 1; i < chain.length; i++) {
+    for (let i = 1; i < chain.length; i++) {
       const element = chain[i];
       if (!treePos) {
         return linkConstruct
       }
-     if (treePos[element]) {
- 
-          //not a param but an exact item
-          linkConstruct = `${linkConstruct}/${treePos[element].____NAME____}`
-          treePos = treePos[`${element}`]
+      if (treePos[element]) {
 
-    } else if (treePos[`$${countSeenParams}`]) {
-      //means that this is a param and anything goes
- 
-      linkConstruct = `${linkConstruct}/$${countSeenParams}`
- 
-      treePos = treePos[`$${countSeenParams}`]
-      countSeenParams =  countSeenParams + 1
+        //not a param but an exact item
+        linkConstruct = `${linkConstruct}/${treePos[element].____NAME____}`
+        treePos = treePos[`${element}`]
+
+      } else if (treePos[`$${countSeenParams}`]) {
+        //means that this is a param and anything goes
+
+        linkConstruct = `${linkConstruct}/$${countSeenParams}`
+
+        treePos = treePos[`$${countSeenParams}`]
+        countSeenParams = countSeenParams + 1
 
 
 
-   } 
-    else{
-      //not what we looking for 
+      }
+      else {
+        //not what we looking for 
+      }
+
+
     }
 
-    
+    return linkConstruct
   }
 
-  return linkConstruct
-}
 
 
-  remixRouteLogger(  processUser, metaDataFunct  ) {
+  beansErrorHandler(err, req, res, next) {
+    //store the data
+    //message and stack
+
+    //find location
+    
+    const initial = err.stack.split('at')[1]
+
+    seed.logError(err.message, {
+      error: err.error,
+      stack: err.stack,
+      name: err.name,
+      cause: err.cause,
+      inputData : {
+        body:req.body,
+        query : req.query,
+        params : req.params
+      }
+    })
+
+
+    if (res.headersSent) {
+      return next(err)
+    }
+    res.status(err.statusCode ||  500).json({
+      success: false,
+      payload: {
+        message: err.message
+      },
+    });
+
+
+  }
+
+
+
+  remixRouteLogger(processUser, metaDataFunct) {
     const { registeredRoute } = this
     const obj = this
-    return function (req, res, next)  { //middleware function
+    return function (req, res, next) { //middleware function
       const processUrl = req.url.split('?')[0];
- 
+
       //check if processUrl is in the registerd url  or processUrl/index
       let exist = registeredRoute[processUrl] || registeredRoute[`${processUrl}/index`]
 
       if (exist) {
         req.rUrl = exist.route //means we found a matching URL in dictionary
       }
-      else{
+      else {
         //we try and find it the hard way
         const standard = obj.hardLinkCheck(processUrl)
         exist = registeredRoute[standard]
@@ -201,7 +240,9 @@ class Beans {
 
     }
   }
- 
+
+
+
 
 
 
@@ -209,39 +250,34 @@ class Beans {
     const APIKey = this.APIKey
     const obj = this
 
-    return  function (req, res, next) { //middleware function
+    return function (req, res, next) { //middleware function
       const end = res.end
+
       //only call at the end of the api
       res.end = async function (chunk, encoding) {
-       
+
+        if (req.method === 'OPTIONS') {
+          next();
+        }
         try {
           //make faster later
-          const user =  (typeof processUser === 'function' ? await processUser(req || {}) : '') || ''
-          const metaData = typeof metaDataFunct === 'function' ? await  metaDataFunct(req || {}) : {}
+          const user = (typeof processUser === 'function' ? await processUser(req || {}) : '') || ''
+          const metaData = typeof metaDataFunct === 'function' ? await metaDataFunct(req || {}) : {}
 
           if (typeof user !== 'string') {
             throw new Error('---------ERROR  user must be a string ---------')
           }
-          const current_datetime = new Date();
-          const formatted_date =
-            current_datetime.getFullYear() +
-            "-" +
-            (current_datetime.getMonth() + 1) +
-            "-" +
-            current_datetime.getDate() +
-            " " +
-            current_datetime.getHours() +
-            ":" +
-            current_datetime.getMinutes() +
-            ":" +
-            current_datetime.getSeconds();
+          
+          // console.dir(req.baseUrl) // '/admin'
+          // console.dir(req.path) // '/new'
+         
           const method = req.method;
-          const url = req.rUrl || (req.route ? req.route.path : req.originalUrl);
+          const url =  `${req.baseUrl}${req.rUrl || (req.route ? req.route.path : req.originalUrl)}`;
           const status = res.statusCode;
           const start = process.hrtime();
           const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
           const body = JSON.parse(JSON.stringify(req.body || {}));//CREATE OBJECT COPY
-         //add options later[TODO]
+          //add options later[TODO]
           delete body.password;
 
           obj.logRoute({
@@ -255,7 +291,7 @@ class Beans {
             duration: durationInMilliseconds.toLocaleString()
           }
             , APIKey, user);
-          
+
           res.end = end;
           res.end(chunk, encoding);
         } catch (error) {
@@ -271,9 +307,109 @@ class Beans {
 
   }
 
+
+  graphQlLogger(processUser, metaDataFunct) {
+    const APIKey = this.APIKey
+    const obj = this
+
+    return function (req, res, next) { //middleware function
+      const end = res.end
+
+      //only call at the end of the api
+      res.end = async function (chunk, encoding) {
+
+
+        //// handle graphql
+
+        //input data
+
+        //// handle graphql
+        try {
+          const user = (typeof processUser === 'function' ? await processUser(req || {}) : '') || ''
+          const metaData = typeof metaDataFunct === 'function' ? await metaDataFunct(req || {}) : {}
+
+          if (req.method === 'OPTIONS') {
+            throw new Error('---------ERROR  METHOD shouldnt be OPTIONS ---------')
+            return next();
+          }
+          //make faster later
+          const info = {}
+          let query = req.body.query.trim()
+
+          if (query.startsWith("query")) {
+            info.type = 'query'
+          } else if (query.startsWith("mutation")) {
+            info.type = 'mutation'
+          } else {
+            //TODO MORE CHECKS
+          }
+
+          ///remove front space and the mutation/query keyword
+          const formatted = query.replace(info.type, '').trim().replace(/\n/g, " ")
+
+          const log = {}
+          ///get the function name by  spiting with the { key 
+          log.url = formatted.split('{')[1].trim()
+          const routeParamsCheck = log.url.match(/[^(]*\(([^)]*)\)/)
+          ///now we need to handle the case of passing variables eg me(content : $content, ego : $ego)
+          if (routeParamsCheck) {
+            ///this route call passes in functions
+            const s2 = routeParamsCheck[1];
+            const paramList = s2.split(',').map((param) => { return param.split(':')[0] })
+            log.url = `${log.url.split('(')[0]}/:${paramList.join('/:')}`
+         
+          }
+
+          log.input = req.body.variables
+          if (typeof user !== 'string') {
+            throw new Error('---------ERROR  user must be a string ---------')
+          }
+
+
+          if (log.url === '__schema') {
+            throw new Error('---------ERROR  not what should be saved ---------')
+          }
+
+          const method = req.method;
+          const url = log.url;
+          const status = res.statusCode;
+          const start = process.hrtime();
+          const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
+          const body =  log.input || {}
+          //add options later[TODO]
+          delete body.password;
+
+          obj.logRoute({
+            method,
+            url,
+            headers: req.headers,
+            status,
+            data: { body, query: req.query, params: req.params },
+            resposeObject: Buffer.from(chunk || '').toString(),
+            metaData,
+            duration: durationInMilliseconds.toLocaleString()
+          }
+            , APIKey, user);
+
+          res.end = end;
+          res.end(chunk, encoding);
+        } catch (error) {
+           // console.log('---------ERROR LOGGING ON BEANS API---------',req.method)
+          res.end = end;
+          res.end(chunk, encoding);
+        }
+      }
+
+      next();
+    };
+
+  }
+
 }
 
-const seed = new Beans()
+
+
+seed = new Beans()
 
 
 module.exports = seed

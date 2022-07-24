@@ -1,6 +1,6 @@
 {
     "name": "beansio",
-    "version": "1.1.14",
+    "version": "1.1.21",
     "dependencies": {
         "axios": "^0.27.2",
         "bull": "3.22.11",

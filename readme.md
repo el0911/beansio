@@ -11,9 +11,10 @@ Logger for logging system events for [Beansio](https://beansio.app/)
 
 ```JS
 ///init beans in the server.tsx file
-beans.plantBeans('Api-key','redis://localhost:6379')
+import { plantBeans, remixRouteLogger,remixBeans } from 'beansio'
+
+plantBeans('APII-KEY', 'redis://localhost:6379')
 //init special remix functions
-beansTree.remixBeans()
 
 //set up sessions
 const sessionStorage = createCookieSessionStorage({
@@ -30,7 +31,7 @@ const sessionStorage = createCookieSessionStorage({
 
 //add middleware for remix
 app.use(
-    beansTree.remixRouteLogger(
+    remixRouteLogger(
 
         async (req: any) => {
             const USER_SESSION_KEY = "userId";
@@ -49,6 +50,34 @@ app.use(
     )
 )   
 ```
+### Graphql example
+```JS
+import { plantBeans, graphQlLogger } from 'beansio'
+
+plantBeans('APII-KEY', 'redis://localhost:6379')
+
+const server = new GraphQLServer({
+  schema,
+  context: createContext,
+  middlewares: [permissions],
+})
+server.express.use(
+
+  graphQlLogger((req: any) => {
+    //this function sets user identifiers that can be stored on the db
+    if (!req.user) {
+      return ""; //must be a string
+    }
+    return req.user.email || ""; ///optional customise return messages
+  }, (req: any) => {
+    //this function lets users set custom meta data to be stored
+    return {}; //set meta data
+  })
+)
+server.start(res => console.log(`We're live on port ${res.port}`));
+
+
+```
 
 ### Express Example
 ```JS
@@ -56,13 +85,12 @@ const express = require('express')
 const app = express()
 const port = 3100
 //import beans library
-const beans = require('./index')
+import { plantBeans, routeLogger } from 'beansio'
 
-//initialise beans
-beans.plantBeans('Api-key','redis://localhost:6379')
+plantBeans('APII-KEY', 'redis://localhost:6379')
 
 //Calling the ExpressBeans function to log all 
-app.use(beansTree.routeLogger(  (req )=>{
+app.use(routeLogger(  (req )=>{
   //this function sets user identifiers that can be stored on the db
  
 
@@ -99,7 +127,6 @@ app.listen(port, () => {
 ```
 
 ## How to use beans to log an error event
-
 ```JS
     const startJokeServer =   () =>{
         app.listen(port, () => {
@@ -110,4 +137,17 @@ app.listen(port, () => {
     }
 ```
 
+## How to use beans as an error handler
+```JS
+    // Error fallback
+    import { plantBeans, beansErrorHandler } from 'beansio'
+
+    plantBeans('APII-KEY', 'redis://localhost:6379')
+    ///
+    ///
+    app.use(beansErrorHandler);
+    
+```
+
  # beansio
+# beansio
