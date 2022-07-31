@@ -1,10 +1,11 @@
 
 
 const Bull = require("bull")
-const { logQueue } = require('./functs')
+const { logQueue, logQueueCustom } = require('./functs')
 const url = require("url");
-const fs = require('fs')
-
+const fs = require('fs');
+const Quee = require("./quee");
+ 
 
 const convertToStandard = (link) => {
   const chain = link.split('/')
@@ -24,10 +25,6 @@ const convertToStandard = (link) => {
 }
 
 let seed = false
-
-
-
-
 
 const getActualRequestDurationInMilliseconds = (start) => {
   const NS_PER_SEC = 1e9; //  convert to nanoseconds
@@ -98,7 +95,8 @@ class Beans {
   setUpJobs() {
     try {
       console.info("adding processes");
-      this.logQueue.process(1, logQueue);
+      // this.logQueue.process(1, logQueue);
+      this.logQueue = new Quee( logQueueCustom )
     } catch (error) {
       console.log(error)
       throw Error("Issues adding processes to jobs  ");
@@ -106,8 +104,9 @@ class Beans {
   }
 
   setUpRedis() {
-    const rtg = url.parse(this.redis);
-    this.logQueue = Bull('LOGGING_EVENTS', { redis: { port: parseInt(`${rtg.port}`), host: rtg.hostname, password: "randompassword" } }); // Specify Redis connection using object
+    // const rtg = url.parse(this.redis);
+    // const connection = redis.createClient();
+    // this.logQueue = Bull('LOGGING_EVENTS', {connection}); // Specify Redis connection using object
   }
 
   logRoute(payload, APIKey, user) {
