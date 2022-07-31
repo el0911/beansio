@@ -4,7 +4,7 @@ const port = 3000
 
 const  beans = require('./index') 
 
-beans.plantBeans('cb4219e6bbdbc8ca630d', 'redis://localhost:6379')
+beans.plantBeans('xxxx')
 
 
 app.use(beans.routeLogger(  (req )=>{

@@ -13,7 +13,7 @@ Logger for logging system events for [Beansio](https://beansio.app/)
 ///init beans in the server.tsx file
 import { plantBeans, remixRouteLogger,remixBeans } from 'beansio'
 
-plantBeans('APII-KEY', 'redis://localhost:6379')
+plantBeans('APII-KEY')
 //init special remix functions
 
 //set up sessions
@@ -54,7 +54,7 @@ app.use(
 ```JS
 import { plantBeans, graphQlLogger } from 'beansio'
 
-plantBeans('APII-KEY', 'redis://localhost:6379')
+plantBeans('APII-KEY')
 
 const server = new GraphQLServer({
   schema,
@@ -87,7 +87,7 @@ const port = 3100
 //import beans library
 import { plantBeans, routeLogger } from 'beansio'
 
-plantBeans('APII-KEY', 'redis://localhost:6379')
+plantBeans('APII-KEY')
 
 //Calling the ExpressBeans function to log all 
 app.use(routeLogger(  (req )=>{
@@ -142,7 +142,7 @@ app.listen(port, () => {
     // Error fallback
     import { plantBeans, beansErrorHandler } from 'beansio'
 
-    plantBeans('APII-KEY', 'redis://localhost:6379')
+    plantBeans('APII-KEY')
     ///
     ///
     app.use(beansErrorHandler);

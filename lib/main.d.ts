@@ -34,7 +34,7 @@ export = BeansIo;
  *~   import * as x from '[~THE MODULE~]'; // WRONG! DO NOT DO THIS!
  */
 declare namespace BeansIo {
-    export function plantBeans(key: string, redisURL: string): any;
+    export function plantBeans(key: string): any;
 
     export function routeLogger(fun: Function, metDataFun: Function): any;
     export function graphQlLogger(fun: Function, metDataFun: Function): any;
