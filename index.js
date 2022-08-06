@@ -5,7 +5,7 @@ const { logQueue, logQueueCustom } = require('./functs')
 const url = require("url");
 const fs = require('fs');
 const Quee = require("./quee");
- 
+
 
 const convertToStandard = (link) => {
   const chain = link.split('/')
@@ -96,7 +96,7 @@ class Beans {
     try {
       console.info("adding processes");
       // this.logQueue.process(1, logQueue);
-      this.logQueue = new Quee( logQueueCustom )
+      this.logQueue = new Quee(logQueueCustom)
     } catch (error) {
       console.log(error)
       throw Error("Issues adding processes to jobs  ");
@@ -180,7 +180,7 @@ class Beans {
     //message and stack
 
     //find location
-    
+
     const initial = err.stack.split('at')[1]
 
     seed.logError(err.message, {
@@ -188,10 +188,10 @@ class Beans {
       stack: err.stack,
       name: err.name,
       cause: err.cause,
-      inputData : {
-        body:req.body,
-        query : req.query,
-        params : req.params
+      inputData: {
+        body: req.body,
+        query: req.query,
+        params: req.params
       }
     })
 
@@ -199,7 +199,7 @@ class Beans {
     if (res.headersSent) {
       return next(err)
     }
-    res.status(err.statusCode ||  500).json({
+    res.status(err.statusCode || 500).json({
       success: false,
       payload: {
         message: err.message
@@ -241,69 +241,180 @@ class Beans {
   }
 
 
+  logAction(req, res, next) { //middleware function
+    const end = res.end
+    const APIKey = this.APIKey
+
+    const { processUser, metaDataFunct } = this
+
+    //only call at the end of the api
+    res.end = async function (chunk, encoding) {
+
+      if (req.method === 'OPTIONS') {
+        next();
+      }
+      try {
+        //make faster later
+        const user = (typeof processUser === 'function' ? await processUser(req || {}) : '') || ''
+        const metaData = typeof metaDataFunct === 'function' ? await metaDataFunct(req || {}) : {}
+
+        if (typeof user !== 'string') {
+          throw new Error('---------ERROR  user must be a string ---------')
+        }
+
+        // console.dir(req.baseUrl) // '/admin'
+        // console.dir(req.path) // '/new'
+
+        const method = req.method;
+        const url = `${req.baseUrl}${req.rUrl || (req.route ? req.route.path : req.originalUrl)}`;
+        const status = res.statusCode;
+        const start = process.hrtime();
+        const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
+        const body = JSON.parse(JSON.stringify(req.body || {}));//CREATE OBJECT COPY
+        //add options later[TODO]
+        delete body.password;
+
+        this.logRoute({
+          method,
+          url,
+          headers: req.headers,
+          status,
+          data: { body, query: req.query, params: req.params },
+          resposeObject: Buffer.from(chunk || '').toString(),
+          metaData,
+          duration: durationInMilliseconds.toLocaleString()
+        }
+          , APIKey, user);
+
+        res.end = end;
+        res.end(chunk, encoding);
+      } catch (error) {
+         console.log('---------ERROR LOGGING ON BEANS API---------')
+        res.end = end;
+        res.end(chunk, encoding);
+      }
+    }
+
+    next();
+  }
 
 
 
 
   routeLogger(processUser, metaDataFunct) {
-    const APIKey = this.APIKey
-    const obj = this
+    this.processUser = processUser
+    this.metaDataFunct = metaDataFunct
+    return this.logAction.bind(this);
+  }
 
-    return function (req, res, next) { //middleware function
-      const end = res.end
+  formatGraphqL(req) {
+    //make faster later
+   try {
+     const info = {}
+     let query = req.body.query.trim()
+ 
+     if (query.startsWith("query")) {
+       info.type = 'query'
+     } else if (query.startsWith("mutation")) {
+       info.type = 'mutation'
+     } else {
+       //TODO MORE CHECKS
+     }
+ 
+     /**
+      * query{
+      *  time{ 
+      *        name
+      *        fame
+      *   }
+      * }
+      */
+ 
+     ///remove front space and the mutation/query keyword
+     const formatted = query.replace(info.type, '').trim().replace(/\n/g, " ")
+ 
+     /**
+    *{
+    *  time{ 
+    *        name
+    *        fame
+    *   }
+    * }
+    */
 
-      //only call at the end of the api
-      res.end = async function (chunk, encoding) {
+      if (formatted.includes('__schema')) {
+        throw Error('not a route')
+      }
+ 
+     const log = {}
+     ///get the function name by  spiting with the { key 
+    //  log.url = formatted.split('{')[1].trim()/// log.url =time
+     const routeParamsCheck = formatted.match(/\s*(\w+)\s*\((.*)\)/)
+     ///now we need to handle the case of passing variables eg me(content : $content, ego : $ego) basically when am passsiiing data
+     const input = {}
 
-        if (req.method === 'OPTIONS') {
-          next();
-        }
-        try {
-          //make faster later
-          const user = (typeof processUser === 'function' ? await processUser(req || {}) : '') || ''
-          const metaData = typeof metaDataFunct === 'function' ? await metaDataFunct(req || {}) : {}
+     
+     if (routeParamsCheck) {
+      let [_,urlName,params] = routeParamsCheck
+      
+      const replaceDic = {}
+       /*need to remove the instance of json being passed 
+        * its gonna be ugly and thats okay
+        *  reg ex \s*\{[^{}]+\}gm
+        * replace the json text with a param like __number__ thiis would store the value for us to use later
+     */
 
-          if (typeof user !== 'string') {
-            throw new Error('---------ERROR  user must be a string ---------')
-          }
-          
-          // console.dir(req.baseUrl) // '/admin'
-          // console.dir(req.path) // '/new'
-         
-          const method = req.method;
-          const url =  `${req.baseUrl}${req.rUrl || (req.route ? req.route.path : req.originalUrl)}`;
-          const status = res.statusCode;
-          const start = process.hrtime();
-          const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
-          const body = JSON.parse(JSON.stringify(req.body || {}));//CREATE OBJECT COPY
-          //add options later[TODO]
-          delete body.password;
-
-          obj.logRoute({
-            method,
-            url,
-            headers: req.headers,
-            status,
-            data: { body, query: req.query, params: req.params },
-            resposeObject: Buffer.from(chunk || '').toString(),
-            metaData,
-            duration: durationInMilliseconds.toLocaleString()
-          }
-            , APIKey, user);
-
-          res.end = end;
-          res.end(chunk, encoding);
-        } catch (error) {
-          console.log(error)
-          console.log('---------ERROR LOGGING ON BEANS API---------')
-          res.end = end;
-          res.end(chunk, encoding);
-        }
+      const matches =  params.match(/\s*\{[^{}]+\}/gm)
+      if (matches) {
+        ///matches exist so we have to replace them with __number__
+        matches.forEach((match,i)=>{
+          replaceDic[`__${i}__`] = match///store the value to be used later when recreatiinig teh data
+          params  = params.replace(match,`__${i}__`)
+        })
       }
 
-      next();
-    };
+     
+   
+      
+       ///this route call passes in functions
+       params.split(',').forEach((param) => {
+         const section = param.split(':')
+         const value = `${section[1]}`.replace(/['"]+/g, '').trim();
+        if (`${section[0]}`.trim() !== 'password') {
+          ///dont wanna store 
+          input[`${section[0]}`.trim()] =  replaceDic[`${value}`] ? replaceDic[`${value}`].replace(/ /g, '').replace(/(password):"((\\"|[^"])*)"/i,"password:*****") : value////usue value that i stored prior
+        }
+        
+       })
 
+      
+       log.url = urlName.toLocaleLowerCase()
+     }else{
+      log.url = formatted.split('{')[1].trim()/// log.url =time
+     }
+ 
+ 
+     const tempRequest = {
+      body:{},
+      query:{},
+      params:{}
+     }
+     if (info.type === 'mutation') {
+       log.data = { ...tempRequest , body: {...input} }
+     } else {
+       log.data = { ...tempRequest , query:  {...input}}
+     }
+
+     log.url = log.url.replace(/ /g, "").replace(/{/g, "").replace(/}/g, "")
+ 
+     return log
+   } catch (error) {
+     }
+    /// incase error occurs
+   return {
+    url:'__schema',
+    data:{}
+   }
   }
 
 
@@ -329,61 +440,31 @@ class Beans {
 
           if (req.method === 'OPTIONS') {
             throw new Error('---------ERROR  METHOD shouldnt be OPTIONS ---------')
-            return next();
           }
-          //make faster later
-          const info = {}
-          let query = req.body.query.trim()
-
-          if (query.startsWith("query")) {
-            info.type = 'query'
-          } else if (query.startsWith("mutation")) {
-            info.type = 'mutation'
-          } else {
-            //TODO MORE CHECKS
-          }
-
-          ///remove front space and the mutation/query keyword
-          const formatted = query.replace(info.type, '').trim().replace(/\n/g, " ")
-
-          const log = {}
-          ///get the function name by  spiting with the { key 
-          log.url = formatted.split('{')[1].trim()
-          const routeParamsCheck = log.url.match(/[^(]*\(([^)]*)\)/)
-          ///now we need to handle the case of passing variables eg me(content : $content, ego : $ego)
-          if (routeParamsCheck) {
-            ///this route call passes in functions
-            const s2 = routeParamsCheck[1];
-            const paramList = s2.split(',').map((param) => { return param.split(':')[0] })
-            log.url = `${log.url.split('(')[0]}/:${paramList.join('/:')}`
-         
-          }
-
-          log.input = req.body.variables
+          const log = obj.formatGraphqL(req)
           if (typeof user !== 'string') {
             throw new Error('---------ERROR  user must be a string ---------')
           }
 
-
           if (log.url === '__schema') {
             throw new Error('---------ERROR  not what should be saved ---------')
           }
+ 
 
-          const method = req.method;
+           const method = req.method;
           const url = log.url;
           const status = res.statusCode;
           const start = process.hrtime();
           const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
-          const body =  log.input || {}
+          const body = log.data.body || {}
           //add options later[TODO]
-          delete body.password;
-
+          
           obj.logRoute({
             method,
             url,
             headers: req.headers,
             status,
-            data: { body, query: req.query, params: req.params },
+            data: {...log.data},
             resposeObject: Buffer.from(chunk || '').toString(),
             metaData,
             duration: durationInMilliseconds.toLocaleString()
@@ -393,7 +474,8 @@ class Beans {
           res.end = end;
           res.end(chunk, encoding);
         } catch (error) {
-           // console.log('---------ERROR LOGGING ON BEANS API---------',req.method)
+          
+          // console.log('---------ERROR LOGGING ON BEANS API---------',error)
           res.end = end;
           res.end(chunk, encoding);
         }

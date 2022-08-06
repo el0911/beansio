@@ -76,7 +76,7 @@ const moment = require('moment')
  */
  const logQueueCustom = async ({ eventType, payload = {}, user, APIKey, message }) => {
   ///logs event  
-  console.log("---------logging event---------");
+  console.dir("---------logging event---------",payload,{depth:null});
 
   try {
 
@@ -133,9 +133,7 @@ const moment = require('moment')
     });
 
   } catch (error) {
-    console.log({
-      error
-    })
+    
   }
 
 };
