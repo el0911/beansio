@@ -110,6 +110,7 @@ class Beans {
   }
 
   logRoute(payload, APIKey, user) {
+    
     try {
       this.logQueue.add({
         eventType: "ROUTE", payload, user, APIKey
@@ -240,59 +241,72 @@ class Beans {
     }
   }
 
-
-  logAction(req, res, next) { //middleware function
-    const end = res.end
-    const APIKey = this.APIKey
+  async routerEnd   (res, req , end ,chunk, encoding) {
 
     const { processUser, metaDataFunct } = this
+    const APIKey = this.APIKey
 
-    //only call at the end of the api
-    res.end = async function (chunk, encoding) {
+    try {
+      //make faster later
+      const user = (typeof processUser === 'function' ? await processUser(req || { }) : '') || ''
+      const metaData = typeof metaDataFunct === 'function' ? await metaDataFunct(req || {}) : {}
+   
+      
+      if (typeof user !== 'string') {
+        throw new Error('---------ERROR  user must be a string ---------')
+      }
 
+      // console.dir(req.baseUrl) // '/admin'
+      // console.dir(req.path) // '/new'
+
+      const method = req.method;
+      const url = `${req.baseUrl}${req.rUrl || (req.route ? req.route.path : req.originalUrl)}`;
+      const status = res.statusCode;
+      const start = process.hrtime();
+      const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
+      const body = JSON.parse(JSON.stringify(req.body || {}));//CREATE OBJECT COPY
+      //add options later[TODO]
+      delete body.password;
+
+      this.logRoute({
+        method,
+        url,
+        headers: req.headers,
+        status,
+        data: { body, query: req.query, params: req.params },
+        resposeObject: Buffer.from(chunk || '').toString(),
+        metaData,
+        duration: durationInMilliseconds.toLocaleString()
+      }
+        , APIKey, user);
+
+      console.log('done')
+
+      res.end = end;
+      res.end(chunk, encoding);
+    } catch (error) {
+      console.log(error)
+       console.log('---------ERROR LOGGING ON BEANS API---------')
+      res.end = end;
+      res.end(chunk, encoding);
+    }
+  }
+
+
+  logAction(req, res, next) { //middleware function
+    try {
+    
+  
       if (req.method === 'OPTIONS') {
         next();
       }
-      try {
-        //make faster later
-        const user = (typeof processUser === 'function' ? await processUser(req || {}) : '') || ''
-        const metaData = typeof metaDataFunct === 'function' ? await metaDataFunct(req || {}) : {}
+      //only call at the end of the api
+       const end = res.end
 
-        if (typeof user !== 'string') {
-          throw new Error('---------ERROR  user must be a string ---------')
-        }
-
-        // console.dir(req.baseUrl) // '/admin'
-        // console.dir(req.path) // '/new'
-
-        const method = req.method;
-        const url = `${req.baseUrl}${req.rUrl || (req.route ? req.route.path : req.originalUrl)}`;
-        const status = res.statusCode;
-        const start = process.hrtime();
-        const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
-        const body = JSON.parse(JSON.stringify(req.body || {}));//CREATE OBJECT COPY
-        //add options later[TODO]
-        delete body.password;
-
-        this.logRoute({
-          method,
-          url,
-          headers: req.headers,
-          status,
-          data: { body, query: req.query, params: req.params },
-          resposeObject: Buffer.from(chunk || '').toString(),
-          metaData,
-          duration: durationInMilliseconds.toLocaleString()
-        }
-          , APIKey, user);
-
-        res.end = end;
-        res.end(chunk, encoding);
-      } catch (error) {
-         console.log('---------ERROR LOGGING ON BEANS API---------')
-        res.end = end;
-        res.end(chunk, encoding);
-      }
+      res.end =  this.routerEnd.bind(this,res,req,end)
+    
+    } catch (error) {
+      
     }
 
     next();
@@ -300,11 +314,14 @@ class Beans {
 
 
 
-
   routeLogger(processUser, metaDataFunct) {
-    this.processUser = processUser
-    this.metaDataFunct = metaDataFunct
-    return this.logAction.bind(this);
+    try {
+      this.processUser = processUser
+      this.metaDataFunct = metaDataFunct
+      return this.logAction.bind(this);
+    } catch (error) {
+      
+    }
   }
 
   formatGraphqL(req) {

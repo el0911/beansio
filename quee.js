@@ -55,7 +55,9 @@ class Quee {
  
          async function runMethod(resolve, reject) {
              try {
-                 await this.method(data)
+                 if ( process.env.NODE_ENV !== 'TEST' ) {///AVOID TEST CUZ I CANNOT KILL MYSELF
+                    await this.method(data)
+                 }
                  resolve({
                      status: true
                  })
