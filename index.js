@@ -1,8 +1,7 @@
 
 
-const Bull = require("bull")
-const { logQueue, logQueueCustom } = require('./functs')
-const url = require("url");
+const { logQueueCustom } = require('./functs')
+const { parse } = require('graphql');
 const fs = require('fs');
 const Quee = require("./quee");
 
@@ -41,14 +40,12 @@ class Beans {
     this.tree = {}
   }
 
-
   plantBeans(APIKey, redisUrl) {
     this.APIKey = APIKey
     this.redis = redisUrl
     this.setUpRedis()
     this.setUpJobs()
   }
-
 
   createTree = (link) => {
     const branch = {}
@@ -110,7 +107,7 @@ class Beans {
   }
 
   logRoute(payload, APIKey, user) {
-    
+
     try {
       this.logQueue.add({
         eventType: "ROUTE", payload, user, APIKey
@@ -241,17 +238,17 @@ class Beans {
     }
   }
 
-  async routerEnd   (res, req , end ,chunk, encoding) {
+  async routerEnd(res, req, end, chunk, encoding) {
 
     const { processUser, metaDataFunct } = this
     const APIKey = this.APIKey
 
     try {
       //make faster later
-      const user = (typeof processUser === 'function' ? await processUser(req || { }) : '') || ''
+      const user = (typeof processUser === 'function' ? await processUser(req || {}) : '') || ''
       const metaData = typeof metaDataFunct === 'function' ? await metaDataFunct(req || {}) : {}
-   
-      
+
+
       if (typeof user !== 'string') {
         throw new Error('---------ERROR  user must be a string ---------')
       }
@@ -286,7 +283,7 @@ class Beans {
       res.end(chunk, encoding);
     } catch (error) {
       console.log(error)
-       console.log('---------ERROR LOGGING ON BEANS API---------')
+      console.log('---------ERROR LOGGING ON BEANS API---------')
       res.end = end;
       res.end(chunk, encoding);
     }
@@ -295,18 +292,18 @@ class Beans {
 
   logAction(req, res, next) { //middleware function
     try {
-    
-  
+
+
       if (req.method === 'OPTIONS') {
         next();
       }
       //only call at the end of the api
-       const end = res.end
+      const end = res.end
 
-      res.end =  this.routerEnd.bind(this,res,req,end)
-    
+      res.end = this.routerEnd.bind(this, res, req, end)
+
     } catch (error) {
-      
+
     }
 
     next();
@@ -320,124 +317,178 @@ class Beans {
       this.metaDataFunct = metaDataFunct
       return this.logAction.bind(this);
     } catch (error) {
-      
+
     }
+  }
+
+  getIntputFromArguments = (argument, storeDic = {}) => {
+    storeDic[`${argument.name.value}`] = argument.value.value
+    if (!!argument.value.fields) {
+      argument.value.fields.forEach((field) => {
+        if (argument.name.value !== 'password') {
+          storeDic[`${argument.name.value}`] = { ...storeDic[`${argument.name.value}`], ...getIntputFromArguments(field) }
+        }
+      })
+    }
+    return storeDic
+  }
+
+  formatGraphqLV2 = (req) => {
+    let query = parse(req.body.query)
+    const operations = []
+
+    query.definitions.forEach((definiton) => {
+      const { operation, name, selectionSet } = definiton
+      selectionSet.selections.forEach(({ arguments: _arguments, name, ...restSelection }) => {
+        //get the arguments passed
+        let extra = ''
+        let data = {}
+        if (!!_arguments.length) {
+          //create the queryy
+          _arguments.forEach((argument) => {
+            const { name, value, loc, ...rest } = argument
+            ///an object was passed
+            const argumentData = this.getIntputFromArguments(argument)
+            if (data[`${name.value}`] !== 'password') {
+              data[`${name.value}`] = value.value || argumentData
+            }
+            if (operation === 'query') {
+              extra = `${extra}/:${name.value}`
+            }
+          })
+
+        }
+
+        if ((operation === 'mutation' || operation === 'query') && `${(definiton.name || name).value}` !== 'IntrospectionQuery') {
+          operations.push({
+            url: `${(definiton.name || name).value}${extra}`,
+            data,
+            operation
+          })
+        }
+
+      })
+    })
+
+    return operations
   }
 
   formatGraphqL(req) {
     //make faster later
-   try {
-     const info = {}
-     let query = req.body.query.trim()
- 
-     if (query.startsWith("query")) {
-       info.type = 'query'
-     } else if (query.startsWith("mutation")) {
-       info.type = 'mutation'
-     } else {
-       //TODO MORE CHECKS
-     }
- 
-     /**
-      * query{
-      *  time{ 
-      *        name
-      *        fame
-      *   }
-      * }
-      */
- 
-     ///remove front space and the mutation/query keyword
-     const formatted = query.replace(info.type, '').trim().replace(/\n/g, " ")
- 
-     /**
-    *{
-    *  time{ 
-    *        name
-    *        fame
-    *   }
-    * }
-    */
+    try {
+      const info = {}
+      let query = req.body.query.trim()
+
+      if (query.startsWith("query")) {
+        info.type = 'query'
+      } else if (query.startsWith("mutation")) {
+        info.type = 'mutation'
+      } else {
+        //TODO MORE CHECKS
+      }
+
+      /**
+       * query{
+       *  time{ 
+       *        name
+       *        fame
+       *   }
+       * }
+       */
+
+      ///remove front space and the mutation/query keyword
+      const formatted = query.replace(info.type, '').trim().replace(/\n/g, " ")
+
+      /**
+     *{
+     *  time{ 
+     *        name
+     *        fame
+     *   }
+     * }
+     */
 
       if (formatted.includes('__schema')) {
         throw Error('not a route')
       }
- 
-     const log = {}
-     ///get the function name by  spiting with the { key 
-    //  log.url = formatted.split('{')[1].trim()/// log.url =time
-     const routeParamsCheck = formatted.match(/\s*(\w+)\s*\((.*)\)/)
-     ///now we need to handle the case of passing variables eg me(content : $content, ego : $ego) basically when am passsiiing data
-     const input = {}
 
-     
-     if (routeParamsCheck) {
-      let [_,urlName,params] = routeParamsCheck
-      
-      const replaceDic = {}
-       /*need to remove the instance of json being passed 
-        * its gonna be ugly and thats okay
-        *  reg ex \s*\{[^{}]+\}gm
-        * replace the json text with a param like __number__ thiis would store the value for us to use later
-     */
+      const log = {}
+      ///get the function name by  spiting with the { key 
+      //  log.url = formatted.split('{')[1].trim()/// log.url =time
+      const routeParamsCheck = formatted.match(/\s*(\w+)\s*\((.*)\)/)
+      ///now we need to handle the case of passing variables eg me(content : $content, ego : $ego) basically when am passsiiing data
+      const input = {}
 
-      const matches =  params.match(/\s*\{[^{}]+\}/gm)
-      if (matches) {
-        ///matches exist so we have to replace them with __number__
-        matches.forEach((match,i)=>{
-          replaceDic[`__${i}__`] = match///store the value to be used later when recreatiinig teh data
-          params  = params.replace(match,`__${i}__`)
+
+      if (routeParamsCheck) {
+        let [_, urlName, params] = routeParamsCheck
+
+        const replaceDic = {}
+        /*need to remove the instance of json being passed 
+         * its gonna be ugly and thats okay
+         *  reg ex \s*\{[^{}]+\}gm
+         * replace the json text with a param like __number__ thiis would store the value for us to use later
+      */
+
+        const matches = params.match(/\s*\{[^{}]+\}/gm)
+        if (matches) {
+          ///matches exist so we have to replace them with __number__
+          matches.forEach((match, i) => {
+            replaceDic[`__${i}__`] = match///store the value to be used later when recreatiinig teh data
+            params = params.replace(match, `__${i}__`)
+          })
+        }
+
+
+
+
+        ///this route call passes in functions
+        params.split(',').forEach((param) => {
+          const section = param.split(':')
+          const value = `${section[1]}`.replace(/['"]+/g, '').trim();
+          if (`${section[0]}`.trim() !== 'password') {
+            ///dont wanna store 
+            input[`${section[0]}`.trim()] = replaceDic[`${value}`] ? replaceDic[`${value}`].replace(/ /g, '').replace(/(password):"((\\"|[^"])*)"/i, "password:*****") : value////usue value that i stored prior
+          }
+
         })
+
+
+        log.url = urlName.toLocaleLowerCase()
+      } else {
+        log.url = formatted.split('{')[1].trim()/// log.url =time
       }
 
-     
-   
-      
-       ///this route call passes in functions
-       params.split(',').forEach((param) => {
-         const section = param.split(':')
-         const value = `${section[1]}`.replace(/['"]+/g, '').trim();
-        if (`${section[0]}`.trim() !== 'password') {
-          ///dont wanna store 
-          input[`${section[0]}`.trim()] =  replaceDic[`${value}`] ? replaceDic[`${value}`].replace(/ /g, '').replace(/(password):"((\\"|[^"])*)"/i,"password:*****") : value////usue value that i stored prior
-        }
-        
-       })
 
-      
-       log.url = urlName.toLocaleLowerCase()
-     }else{
-      log.url = formatted.split('{')[1].trim()/// log.url =time
-     }
- 
- 
-     const tempRequest = {
-      body:{},
-      query:{},
-      params:{}
-     }
-     if (info.type === 'mutation') {
-       log.data = { ...tempRequest , body: {...input} }
-     } else {
-       log.data = { ...tempRequest , query:  {...input}}
-     }
+      const tempRequest = {
+        body: {},
+        query: {},
+        params: {}
+      }
+      if (info.type === 'mutation') {
+        log.data = { ...tempRequest, body: { ...input } }
+      } else {
+        log.data = { ...tempRequest, query: { ...input } }
+      }
 
-     log.url = log.url.replace(/ /g, "").replace(/{/g, "").replace(/}/g, "")
- 
-     return log
-   } catch (error) {
-     }
+      log.url = log.url.replace(/ /g, "").replace(/{/g, "").replace(/}/g, "")
+
+      return log
+    } catch (error) {
+      console.log(error)
+    }
     /// incase error occurs
-   return {
-    url:'__schema',
-    data:{}
-   }
+    return {
+      url: '__schema',
+      data: {}
+    }
   }
 
 
   graphQlLogger(processUser, metaDataFunct) {
     const APIKey = this.APIKey
     const obj = this
+
 
     return function (req, res, next) { //middleware function
       const end = res.end
@@ -452,46 +503,55 @@ class Beans {
 
         //// handle graphql
         try {
+
           const user = (typeof processUser === 'function' ? await processUser(req || {}) : '') || ''
           const metaData = typeof metaDataFunct === 'function' ? await metaDataFunct(req || {}) : {}
 
           if (req.method === 'OPTIONS') {
             throw new Error('---------ERROR  METHOD shouldnt be OPTIONS ---------')
           }
-          const log = obj.formatGraphqL(req)
+
           if (typeof user !== 'string') {
             throw new Error('---------ERROR  user must be a string ---------')
           }
+          const logs = obj.formatGraphqLV2(req)
 
-          if (log.url === '__schema') {
-            throw new Error('---------ERROR  not what should be saved ---------')
-          }
- 
+          logs.forEach((log) => {
+            //for each operation
+            if (log.url === '__schema') {
+              throw new Error('---------ERROR  not what should be saved ---------')
+            }
 
-           const method = req.method;
-          const url = log.url;
-          const status = res.statusCode;
-          const start = process.hrtime();
-          const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
-          const body = log.data.body || {}
-          //add options later[TODO]
-          
-          obj.logRoute({
-            method,
-            url,
-            headers: req.headers,
-            status,
-            data: {...log.data},
-            resposeObject: Buffer.from(chunk || '').toString(),
-            metaData,
-            duration: durationInMilliseconds.toLocaleString()
-          }
-            , APIKey, user);
+
+            const method = req.method;
+            const url = log.url;
+            const status = res.statusCode;
+            const start = process.hrtime();
+            const durationInMilliseconds = getActualRequestDurationInMilliseconds(start);
+            const body = log.data.body || {}
+            //add options later[TODO]
+
+            obj.logRoute({
+              method,
+              url,
+              headers: req.headers,
+              status,
+              data: { ...log.data },
+              resposeObject: Buffer.from(chunk || '').toString(),
+              metaData,
+              duration: durationInMilliseconds.toLocaleString()
+            }
+              , APIKey, user);
+
+          })
+
+
+
 
           res.end = end;
           res.end(chunk, encoding);
         } catch (error) {
-          
+
           // console.log('---------ERROR LOGGING ON BEANS API---------',error)
           res.end = end;
           res.end(chunk, encoding);
