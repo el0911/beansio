@@ -335,7 +335,10 @@ class Beans {
 
   formatGraphqLV2 = (req) => {
     let query = parse(req.body.query)
+    let variables =  req.body.variables
     const operations = []
+
+  
 
     query.definitions.forEach((definiton) => {
       const { operation, name, selectionSet } = definiton
@@ -348,7 +351,7 @@ class Beans {
           _arguments.forEach((argument) => {
             const { name, value, loc, ...rest } = argument
             ///an object was passed
-            const argumentData = this.getIntputFromArguments(argument)
+            const argumentData = variables[name.value]||this.getIntputFromArguments(argument)
             if (data[`${name.value}`] !== 'password') {
               data[`${name.value}`] = value.value || argumentData
             }
@@ -360,6 +363,10 @@ class Beans {
         }
 
         if ((operation === 'mutation' || operation === 'query') && `${(definiton.name || name).value}` !== 'IntrospectionQuery') {
+          console.log({
+            query:req.body
+          })
+        
           operations.push({
             url: `${(definiton.name || name).value}${extra}`,
             data,

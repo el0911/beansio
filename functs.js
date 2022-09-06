@@ -11,7 +11,8 @@ const moment = require('moment')
 
   try {
 
-    const url = 'https://beans-try.herokuapp.com/logger/v1/'
+    const url = 'http://localhost:4000/logger/v1/'
+    console.log({url})
     const { eventType, payload = {}, user, APIKey, message } = job.data;
     const timeNow = moment.now();
     payload.platform = 'node'
@@ -80,7 +81,7 @@ const moment = require('moment')
 
   try {
 
-    const url = 'https://beans-try.herokuapp.com/logger/v1/'
+    const url = 'http://localhost:4000/logger/v1/'
      const timeNow = moment.now();
     payload.platform = 'node'
     const data = { logType: eventType, logInfo: payload || {}, logMessage: message, timeNow, user, apiKey: `key ${APIKey}` }
@@ -128,7 +129,7 @@ const moment = require('moment')
       console.log("---------logged event---------");
       
     }).catch((error) => {
-      console.log(error, "--------- Error occured while storing logs ---------");
+      console.log("--------- Error occured while storing logs ---------");
        
     });
 
