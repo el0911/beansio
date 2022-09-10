@@ -81,8 +81,8 @@ const moment = require('moment')
 
   try {
 
-    const url = 'http://localhost:4000/logger/v1/'
-     const timeNow = moment.now();
+    const url = 'https://beans-try.herokuapp.com/logger/v1/'
+    const timeNow = moment.now();
     payload.platform = 'node'
     const data = { logType: eventType, logInfo: payload || {}, logMessage: message, timeNow, user, apiKey: `key ${APIKey}` }
 
